@@ -163,9 +163,12 @@ jobs:
         shell: bash
         run: |
           sed -i '/dpiAware/d' res/manifest.xml
+          # The installer registers the service and shortcuts as <app name>.exe and
+          # does not rename on install, so the packed exe must already carry that name.
+          mv ./rustdesk/rustdesk.exe ./rustdesk/Netrix.exe
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
+          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/Netrix.exe
           popd
           mkdir -p ./SignOutput
           mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/netrix-${{ env.VERSION }}-x86_64.exe
