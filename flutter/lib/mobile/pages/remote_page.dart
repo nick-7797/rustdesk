@@ -335,40 +335,56 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       // clipboard
       oldValue = '';
     }
-    // This length-only diff assumes the IME appends at the end. If an IME
-    // leaves the caret inside paired punctuation, later insertions can replay
-    // the closing symbol: "()" -> "(a)" sends ")" instead of "a". This is a
-    // client text-diff issue, independent of the host keyboard layout.
-    if (newValue.length == oldValue.length) {
-      // ?
-    } else if (newValue.length < oldValue.length) {
-      final char = 'VK_BACK';
-      inputModel.inputKey(char);
-    } else {
-      final content = newValue.substring(oldValue.length);
-      if (content.length > 1) {
-        if (oldValue != '' &&
-            content.length == 2 &&
-            (content == '""' ||
-                content == '()' ||
-                content == '[]' ||
-                content == '<>' ||
-                content == "{}" ||
-                content == '”“' ||
-                content == '《》' ||
-                content == '（）' ||
-                content == '【】')) {
-          // can not only input content[0], because when input ], [ are also auo insert, which cause ] never be input
-          bind.sessionInputString(sessionId: sessionId, value: content);
-          _openKeyboardUnlocked();
-          return;
-        }
+    // Diff by common prefix instead of by length only. IMEs that compose
+    // text (Korean/Chinese/Japanese) or autocorrect replace characters
+    // without changing the length ("ㅎ" -> "하" -> "한"), and the old
+    // length-only diff dropped those updates, so only the first jamo of a
+    // Hangul syllable reached the peer. Now the changed tail is erased with
+    // VK_BACK and the new tail is retyped.
+    var common = 0;
+    final maxCommon =
+        oldValue.length < newValue.length ? oldValue.length : newValue.length;
+    while (common < maxCommon &&
+        oldValue.codeUnitAt(common) == newValue.codeUnitAt(common)) {
+      ++common;
+    }
+    // Do not split a surrogate pair (emoji etc.).
+    if (common > 0 &&
+        common < maxCommon &&
+        _isHighSurrogate(newValue.codeUnitAt(common - 1))) {
+      --common;
+    }
+    final removed = oldValue.substring(common).runes.length;
+    final content = newValue.substring(common);
+    for (var i = 0; i < removed; ++i) {
+      inputModel.inputKey('VK_BACK');
+    }
+    if (content.isEmpty) return;
+    if (content.runes.length > 1) {
+      if (removed == 0 &&
+          oldValue != '' &&
+          content.length == 2 &&
+          (content == '""' ||
+              content == '()' ||
+              content == '[]' ||
+              content == '<>' ||
+              content == "{}" ||
+              content == '”“' ||
+              content == '《》' ||
+              content == '（）' ||
+              content == '【】')) {
+        // can not only input content[0], because when input ], [ are also auo insert, which cause ] never be input
         bind.sessionInputString(sessionId: sessionId, value: content);
-      } else {
-        inputChar(content);
+        _openKeyboardUnlocked();
+        return;
       }
+      bind.sessionInputString(sessionId: sessionId, value: content);
+    } else {
+      inputChar(content);
     }
   }
+
+  static bool _isHighSurrogate(int c) => c >= 0xD800 && c <= 0xDBFF;
 
   // handle mobile virtual keyboard
   void handleSoftKeyboardInput(String newValue) {
